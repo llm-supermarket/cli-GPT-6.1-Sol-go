@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'bucket/**'
+      - 'Formula/**'
+      - '**/*.md'
+
+# Serialize publication and package updates; do not cancel a release mid-publish.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - run: go test ./...
+      - run: go vet ./...
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: llm-supermarket/cli-GPT-6.1-Sol-go
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - name: Choose unused version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          number="$GITHUB_RUN_NUMBER"
+          while git ls-remote --exit-code --tags origin "refs/tags/v0.1.$number" >/dev/null; do
+            number=$((number + 1))
+          done
+          # Distinguish an absent tag (2) from a transport/authentication error.
+          git ls-remote --tags origin >/dev/null
+          echo "tag=v0.1.$number" >> "$GITHUB_OUTPUT"
+      - name: Build archives and manifests
+        run: go run ./scripts/packaging -version '${{ steps.version.outputs.tag }}' -dist "$RUNNER_TEMP/release" -output "$RUNNER_TEMP/packages"
+      - name: Publish release
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" "$RUNNER_TEMP/release/"* \
+            --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+      # A separate checkout prevents concurrent source changes being overwritten.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: package-update
+          fetch-depth: 0
+      - name: Commit only generated packages to latest main
+        working-directory: package-update
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Retry from fresh main, not by force-pushing or replaying source files.
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git checkout -B package-update origin/main
+            if [ -f bucket/cli-GPT-6.1-Sol-go.json ]; then
+              current=$(jq -r .version bucket/cli-GPT-6.1-Sol-go.json)
+              next="${TAG#v}"
+              if [ "$(printf '%s\n' "$current" "$next" | sort -V | tail -n 1)" != "$next" ]; then
+                echo "A newer package version is already on main; skipping update."
+                exit 0
+              fi
+            fi
+            mkdir -p bucket Formula
+            cp "$RUNNER_TEMP/packages/bucket/cli-GPT-6.1-Sol-go.json" bucket/
+            cp "$RUNNER_TEMP/packages/Formula/cli-gpt-6.1-sol-go.rb" Formula/
+            git add -- bucket/cli-GPT-6.1-Sol-go.json Formula/cli-gpt-6.1-sol-go.rb
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m "chore: update release packages for $TAG"
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 2))
+          done
+          echo 'Release published, but package update failed. Check branch protection and workflow write permissions.' >&2
+          exit 1
