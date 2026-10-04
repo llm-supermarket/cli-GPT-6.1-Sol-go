@@ -1,0 +1,16 @@
+{
+  "architecture": {
+    "64bit": {
+      "hash": "fc0eeff4ee608123353dc0ecd8bc21df47bf0929e39a83d5433857c01a56b7fe",
+      "url": "https://github.com/llm-supermarket/cli-GPT-6.1-Sol-go/releases/download/v0.1.1/cli-GPT-6.1-Sol-go_v0.1.1_windows_amd64.zip"
+    },
+    "arm64": {
+      "hash": "302339dee1c18f6d0f1812689703499a41d1fdf85431905f48fbf0e9d89a39f7",
+      "url": "https://github.com/llm-supermarket/cli-GPT-6.1-Sol-go/releases/download/v0.1.1/cli-GPT-6.1-Sol-go_v0.1.1_windows_arm64.zip"
+    }
+  },
+  "bin": "cli-GPT-6.1-Sol-go.exe",
+  "description": "Standalone cli-GPT-6.1-Sol-go CLI",
+  "homepage": "https://github.com/llm-supermarket/cli-GPT-6.1-Sol-go",
+  "version": "0.1.1"
+}
