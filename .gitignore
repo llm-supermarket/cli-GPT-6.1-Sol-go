@@ -1,2 +1,5 @@
 src/llm-supermarket.exe
 .opencode/
+/dist/
+/cli-GPT-6.1-Sol-go
+/cli-GPT-6.1-Sol-go.exe
